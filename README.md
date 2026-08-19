@@ -12,6 +12,8 @@ Jednoduchá PWA pre GitHub Pages.
 - automatické načítanie najnovšieho dostupného referenčného kurzu
 - posledný kurz sa uloží do localStorage pre offline použitie
 - všetky nákupy sa ukladajú lokálne v zariadení cez localStorage
+- export jedného foldera do JSON
+- import exportovaného foldera späť do aplikácie
 
 ## Nasadenie do existujúceho GitHub Pages repozitára `List`
 
@@ -36,3 +38,14 @@ Potom otvor:
 ## Poznámka ku kurzom
 
 Aplikácia používa verejné API Frankfurter v2. Ide o najnovšie dostupné referenčné kurzy, nie garantovaný kurz tvojej banky alebo platobnej karty.
+
+
+## Export / import
+
+V otvorenom folderi použi **Stiahnuť folder**. Aplikácia vytvorí napríklad:
+
+`moje-nakupy-Krakow.json`
+
+Na hlavnej obrazovke použi **Importovať** a vyber tento JSON súbor.
+Import vytvorí nový folder aj so všetkými položkami. Ak už existuje folder s rovnakým názvom,
+nový dostane príponu `(import)`.

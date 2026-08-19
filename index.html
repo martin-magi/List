@@ -93,7 +93,11 @@
           <div class="title">Moje nákupy</div>
           <div class="subtitle">Vytvor si folder pre výlet alebo nákup a zapisuj výdavky.</div>
         </div>
-        <button id="newFolderBtn" class="btn primary">+ Folder</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+          <button id="importFolderBtn" class="btn">Importovať</button>
+          <button id="newFolderBtn" class="btn primary">+ Folder</button>
+          <input id="importFolderInput" type="file" accept=".json,application/json" class="hidden">
+        </div>
       </div>
 
       <div id="foldersList" class="grid"></div>
@@ -110,7 +114,10 @@
           <div id="folderTitle" class="title"></div>
           <div id="folderMeta" class="subtitle"></div>
         </div>
-        <button id="deleteFolderBtn" class="btn danger small">Zmazať folder</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end">
+          <button id="exportFolderBtn" class="btn small">Stiahnuť folder</button>
+          <button id="deleteFolderBtn" class="btn danger small">Zmazať folder</button>
+        </div>
       </div>
 
       <div class="card">
@@ -211,6 +218,117 @@
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+  }
+
+  function safeFileName(name) {
+    return String(name || 'folder')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^a-zA-Z0-9._-]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 80) || 'folder';
+  }
+
+  function downloadJson(filename, data) {
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type:'application/json;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+
+  function exportCurrentFolder() {
+    const folder = currentFolder();
+    if (!folder) return;
+
+    const payload = {
+      app: 'moje-nakupy',
+      formatVersion: 1,
+      exportedAt: new Date().toISOString(),
+      folder: {
+        name: folder.name,
+        createdAt: folder.createdAt,
+        items: folder.items.map(item => ({
+          name: item.name,
+          amount: Number(item.amount),
+          currency: item.currency,
+          createdAt: item.createdAt
+        }))
+      }
+    };
+
+    downloadJson(
+      `moje-nakupy-${safeFileName(folder.name)}.json`,
+      payload
+    );
+  }
+
+  function normalizeImportedFolder(data) {
+    const rawFolder = data?.folder || data;
+
+    if (!rawFolder || typeof rawFolder !== 'object') {
+      throw new Error('Súbor neobsahuje platný folder.');
+    }
+
+    const name = String(rawFolder.name || '').trim();
+    if (!name) {
+      throw new Error('Folder nemá názov.');
+    }
+
+    const rawItems = Array.isArray(rawFolder.items) ? rawFolder.items : [];
+    const items = rawItems.map((item, index) => {
+      const itemName = String(item?.name || '').trim();
+      const amount = Number(item?.amount);
+      const currency = String(item?.currency || '').toUpperCase();
+
+      if (!itemName) throw new Error(`Položka č. ${index + 1} nemá názov.`);
+      if (!Number.isFinite(amount) || amount < 0) throw new Error(`Položka "${itemName}" má neplatnú sumu.`);
+      if (!CURRENCIES.includes(currency)) throw new Error(`Položka "${itemName}" má nepodporovanú menu ${currency}.`);
+
+      return {
+        id: uid(),
+        name: itemName,
+        amount,
+        currency,
+        createdAt: Number(item?.createdAt) || Date.now()
+      };
+    });
+
+    return {
+      id: uid(),
+      name,
+      createdAt: Number(rawFolder.createdAt) || Date.now(),
+      items
+    };
+  }
+
+  async function importFolderFile(file) {
+    if (!file) return;
+
+    try {
+      const text = await file.text();
+      const parsed = JSON.parse(text);
+      const folder = normalizeImportedFolder(parsed);
+
+      // Pri rovnakom názve folder nemažeme ani neprepisujeme.
+      const duplicate = state.folders.some(f => f.name.toLowerCase() === folder.name.toLowerCase());
+      if (duplicate) {
+        folder.name = folder.name + ' (import)';
+      }
+
+      state.folders.push(folder);
+      saveState();
+      renderFolders();
+      openFolder(folder.id);
+    } catch (e) {
+      alert('Import sa nepodaril: ' + (e?.message || 'Neplatný súbor.'));
+    } finally {
+      $('importFolderInput').value = '';
+    }
   }
 
   function fmtCurrency(amount, currency) {
@@ -461,6 +579,16 @@
 
     $('rateDate').textContent = rateDate ? 'Kurz k dátumu: ' + new Date(rateDate + 'T00:00:00').toLocaleDateString('sk-SK') : '';
   }
+
+  $('importFolderBtn').addEventListener('click', () => {
+    $('importFolderInput').click();
+  });
+
+  $('importFolderInput').addEventListener('change', e => {
+    importFolderFile(e.target.files?.[0]);
+  });
+
+  $('exportFolderBtn').addEventListener('click', exportCurrentFolder);
 
   $('newFolderBtn').addEventListener('click', () => {
     $('folderName').value = '';

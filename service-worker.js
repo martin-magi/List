@@ -1,4 +1,4 @@
-const CACHE = 'moje-nakupy-static-v3';
+const CACHE = 'moje-nakupy-static-v4';
 const ASSETS = [
   './',
   './index.html',

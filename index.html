@@ -1,0 +1,515 @@
+<!doctype html>
+<html lang="sk">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#111827">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Moje nákupy">
+  <link rel="manifest" href="./manifest.json">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+  <title>Moje nákupy</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg:#0b1020;
+      --panel:#111827;
+      --panel2:#172033;
+      --text:#f8fafc;
+      --muted:#94a3b8;
+      --line:#283449;
+      --accent:#3b82f6;
+      --danger:#ef4444;
+      --good:#22c55e;
+      --shadow:0 12px 30px rgba(0,0,0,.28);
+    }
+    *{box-sizing:border-box}
+    html,body{margin:0;min-height:100%;background:var(--bg);color:var(--text);font-family:Inter,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+    body{padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+    button,input,select{font:inherit}
+    button{cursor:pointer}
+    .app{max-width:760px;margin:0 auto;padding:18px}
+    .topbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px}
+    .title{font-size:28px;font-weight:800;letter-spacing:-.02em}
+    .subtitle{color:var(--muted);font-size:14px;margin-top:4px}
+    .btn{border:0;border-radius:12px;padding:11px 14px;background:var(--panel2);color:var(--text);font-weight:700}
+    .btn:hover{filter:brightness(1.08)}
+    .btn.primary{background:var(--accent);color:#fff}
+    .btn.danger{background:rgba(239,68,68,.14);color:#fecaca;border:1px solid rgba(239,68,68,.3)}
+    .btn.small{padding:8px 10px;border-radius:10px;font-size:13px}
+    .card{background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:var(--shadow)}
+    .grid{display:grid;gap:12px}
+    .folder{display:flex;align-items:center;justify-content:space-between;gap:14px}
+    .folder-main{min-width:0;flex:1}
+    .folder-name{font-size:18px;font-weight:800;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+    .folder-meta{color:var(--muted);font-size:13px;margin-top:4px}
+    .folder-total{font-weight:800;margin-top:8px}
+    .empty{padding:28px 18px;text-align:center;color:var(--muted);border:1px dashed var(--line);border-radius:18px}
+    .back{display:flex;align-items:center;gap:8px;background:transparent;border:0;color:var(--muted);padding:0;font-weight:700;margin-bottom:10px}
+    .section-title{font-size:16px;font-weight:800;margin:0 0 12px}
+    .form-grid{display:grid;grid-template-columns:1.7fr .8fr .9fr auto;gap:8px}
+    input,select{width:100%;background:#0d1527;color:var(--text);border:1px solid var(--line);border-radius:12px;padding:12px;outline:none}
+    input:focus,select:focus{border-color:var(--accent)}
+    .items{display:grid;gap:10px;margin-top:14px}
+    .item{display:grid;grid-template-columns:1fr auto auto;align-items:center;gap:12px;padding:13px 0;border-bottom:1px solid var(--line)}
+    .item:last-child{border-bottom:0}
+    .item-name{font-weight:750;word-break:break-word}
+    .item-eur{color:var(--muted);font-size:12px;margin-top:3px}
+    .item-amount{text-align:right;font-weight:800;white-space:nowrap}
+    .totals{margin-top:14px;display:grid;gap:10px}
+    .total-row{display:flex;justify-content:space-between;gap:14px;color:var(--muted)}
+    .total-row strong{color:var(--text)}
+    .grand{display:flex;justify-content:space-between;align-items:flex-end;gap:14px;padding-top:14px;margin-top:4px;border-top:1px solid var(--line)}
+    .grand-label{font-size:13px;color:var(--muted)}
+    .grand-value{font-size:28px;font-weight:900;letter-spacing:-.02em}
+    .ratebox{margin-top:12px;padding:12px;border-radius:14px;background:#0d1527;border:1px solid var(--line)}
+    .rate-line{display:flex;justify-content:space-between;gap:10px;align-items:center}
+    .rate-status{font-size:13px;color:var(--muted)}
+    .rate-status.ok{color:#86efac}
+    .rate-status.bad{color:#fca5a5}
+    dialog{width:min(92vw,460px);background:var(--panel);color:var(--text);border:1px solid var(--line);border-radius:18px;padding:18px;box-shadow:var(--shadow)}
+    dialog::backdrop{background:rgba(0,0,0,.68)}
+    .dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:14px}
+    .hidden{display:none!important}
+    .pill{display:inline-block;font-size:11px;border-radius:999px;padding:4px 8px;background:#0d1527;color:var(--muted);border:1px solid var(--line)}
+    .footer-note{font-size:12px;color:var(--muted);margin:16px 4px 4px;line-height:1.45}
+    @media(max-width:640px){
+      .app{padding:14px}
+      .title{font-size:24px}
+      .form-grid{grid-template-columns:1fr 1fr}
+      .form-grid .name{grid-column:1/-1}
+      .form-grid .add{grid-column:1/-1}
+      .item{grid-template-columns:1fr auto}
+      .item .remove{grid-column:1/-1;justify-self:end}
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <section id="foldersView">
+      <div class="topbar">
+        <div>
+          <div class="title">Moje nákupy</div>
+          <div class="subtitle">Vytvor si folder pre výlet alebo nákup a zapisuj výdavky.</div>
+        </div>
+        <button id="newFolderBtn" class="btn primary">+ Folder</button>
+      </div>
+
+      <div id="foldersList" class="grid"></div>
+
+      <div class="footer-note">
+        Dáta sa ukladajú iba do tohto zariadenia cez localStorage. Kurz sa načítava z internetu a posledný úspešný kurz sa uchová aj pre offline použitie.
+      </div>
+    </section>
+
+    <section id="folderView" class="hidden">
+      <button id="backBtn" class="back">← Všetky foldery</button>
+      <div class="topbar">
+        <div>
+          <div id="folderTitle" class="title"></div>
+          <div id="folderMeta" class="subtitle"></div>
+        </div>
+        <button id="deleteFolderBtn" class="btn danger small">Zmazať folder</button>
+      </div>
+
+      <div class="card">
+        <h2 class="section-title">Pridať položku</h2>
+        <form id="itemForm" class="form-grid">
+          <input id="itemName" class="name" type="text" maxlength="120" placeholder="Napr. večera" required>
+          <input id="itemAmount" type="number" min="0" step="0.01" inputmode="decimal" placeholder="Suma" required>
+          <select id="itemCurrency" aria-label="Mena">
+            <option value="EUR">EUR – Euro</option>
+            <option value="CZK">CZK – Česká koruna</option>
+            <option value="PLN">PLN – Poľský zlotý</option>
+            <option value="GBP">GBP – Libra</option>
+            <option value="USD">USD – Dolár</option>
+          </select>
+          <button class="btn primary add" type="submit">Pridať</button>
+        </form>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <div class="rate-line">
+          <h2 class="section-title" style="margin:0">Položky</h2>
+          <span id="itemCount" class="pill"></span>
+        </div>
+        <div id="itemsList" class="items"></div>
+      </div>
+
+      <div class="card" style="margin-top:14px">
+        <h2 class="section-title">Súhrn</h2>
+        <div id="currencyTotals" class="totals"></div>
+        <div class="grand">
+          <div>
+            <div class="grand-label">Spolu prepočítané na EUR</div>
+            <div id="grandTotal" class="grand-value">0,00 €</div>
+          </div>
+        </div>
+
+        <div class="ratebox">
+          <div class="rate-line">
+            <div>
+              <div id="rateStatus" class="rate-status">Načítavam kurz…</div>
+              <div id="rateDate" class="rate-status"></div>
+            </div>
+            <button id="refreshRatesBtn" class="btn small" type="button">Obnoviť kurz</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer-note">
+        Prepočet používa najnovší dostupný referenčný kurz. Banka alebo platobná karta môže použiť iný kurz a pripočítať poplatky.
+      </div>
+    </section>
+  </main>
+
+  <dialog id="folderDialog">
+    <form id="folderForm">
+      <h2 style="margin:0 0 12px">Nový folder</h2>
+      <input id="folderName" type="text" maxlength="80" placeholder="Napr. Krakow" required autofocus>
+      <div class="dialog-actions">
+        <button id="cancelFolderBtn" class="btn" type="button">Zrušiť</button>
+        <button class="btn primary" type="submit">Vytvoriť</button>
+      </div>
+    </form>
+  </dialog>
+
+<script>
+(() => {
+  const STORAGE_KEY = 'moje-nakupy-v3';
+  const RATE_KEY = 'moje-nakupy-rates-v2';
+  const CURRENCIES = ['EUR','CZK','PLN','GBP','USD'];
+  const currencyNames = {
+    EUR:'Euro', CZK:'Česká koruna', PLN:'Poľský zlotý', GBP:'Libra', USD:'Dolár'
+  };
+
+  let state = loadState();
+  let rates = { EUR: 1 };
+  let rateDate = '';
+  let selectedFolderId = null;
+
+  const $ = id => document.getElementById(id);
+
+  function loadState() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if (saved && Array.isArray(saved.folders)) return saved;
+    } catch {}
+    return { folders: [] };
+  }
+
+  function saveState() {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  }
+
+  function uid() {
+    return (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
+  }
+
+  function escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
+  }
+
+  function fmtCurrency(amount, currency) {
+    const locale = {EUR:'sk-SK', CZK:'cs-CZ', PLN:'pl-PL', GBP:'en-GB', USD:'en-US'}[currency] || 'sk-SK';
+    return new Intl.NumberFormat(locale, { style:'currency', currency, minimumFractionDigits:2, maximumFractionDigits:2 }).format(amount);
+  }
+
+  function toEur(amount, currency) {
+    if (currency === 'EUR') return amount;
+    const r = rates[currency];
+    return r ? amount / r : null;
+  }
+
+  function currentFolder() {
+    return state.folders.find(f => f.id === selectedFolderId);
+  }
+
+  function folderEurTotal(folder) {
+    let total = 0;
+    for (const item of folder.items) {
+      const eur = toEur(Number(item.amount), item.currency);
+      if (eur != null) total += eur;
+    }
+    return total;
+  }
+
+  function renderFolders() {
+    $('foldersList').innerHTML = '';
+    if (!state.folders.length) {
+      $('foldersList').innerHTML = '<div class="empty">Zatiaľ nemáš žiadny folder.<br>Vytvor napríklad <strong>Krakow</strong>.</div>';
+      return;
+    }
+
+    const sorted = [...state.folders].sort((a,b) => b.createdAt - a.createdAt);
+    for (const folder of sorted) {
+      const total = folderEurTotal(folder);
+      const el = document.createElement('div');
+      el.className = 'card folder';
+      el.innerHTML = `
+        <div class="folder-main">
+          <div class="folder-name">${escapeHtml(folder.name)}</div>
+          <div class="folder-meta">${folder.items.length} ${folder.items.length === 1 ? 'položka' : 'položiek'}</div>
+          <div class="folder-total">${fmtCurrency(total, 'EUR')}</div>
+        </div>
+        <button class="btn small">Otvoriť →</button>
+      `;
+      el.querySelector('button').addEventListener('click', () => openFolder(folder.id));
+      el.addEventListener('dblclick', () => openFolder(folder.id));
+      $('foldersList').appendChild(el);
+    }
+  }
+
+  function openFolder(id) {
+    selectedFolderId = id;
+    $('foldersView').classList.add('hidden');
+    $('folderView').classList.remove('hidden');
+    renderFolder();
+    history.replaceState(null, '', '#folder=' + encodeURIComponent(id));
+  }
+
+  function closeFolder() {
+    selectedFolderId = null;
+    $('folderView').classList.add('hidden');
+    $('foldersView').classList.remove('hidden');
+    history.replaceState(null, '', location.pathname + location.search);
+    renderFolders();
+  }
+
+  function renderFolder() {
+    const folder = currentFolder();
+    if (!folder) return closeFolder();
+
+    $('folderTitle').textContent = folder.name;
+    $('folderMeta').textContent = 'Vytvorené ' + new Date(folder.createdAt).toLocaleDateString('sk-SK');
+    $('itemCount').textContent = folder.items.length + (folder.items.length === 1 ? ' položka' : ' položiek');
+
+    const list = $('itemsList');
+    list.innerHTML = '';
+
+    if (!folder.items.length) {
+      list.innerHTML = '<div class="empty">Zatiaľ tu nemáš žiadnu položku.</div>';
+    } else {
+      [...folder.items].reverse().forEach(item => {
+        const eur = toEur(Number(item.amount), item.currency);
+        const row = document.createElement('div');
+        row.className = 'item';
+        row.innerHTML = `
+          <div>
+            <div class="item-name">${escapeHtml(item.name)}</div>
+            <div class="item-eur">${eur == null ? 'Kurz nie je dostupný' : '≈ ' + fmtCurrency(eur, 'EUR')}</div>
+          </div>
+          <div class="item-amount">${fmtCurrency(Number(item.amount), item.currency)}</div>
+          <button class="btn danger small remove" type="button">Odobrať</button>
+        `;
+        row.querySelector('.remove').addEventListener('click', () => removeItem(item.id));
+        list.appendChild(row);
+      });
+    }
+
+    renderTotals(folder);
+  }
+
+  function renderTotals(folder) {
+    const byCurrency = {};
+    CURRENCIES.forEach(c => byCurrency[c] = 0);
+
+    for (const item of folder.items) {
+      byCurrency[item.currency] = (byCurrency[item.currency] || 0) + Number(item.amount);
+    }
+
+    const totals = $('currencyTotals');
+    totals.innerHTML = '';
+
+    for (const c of CURRENCIES) {
+      if (!byCurrency[c]) continue;
+      const row = document.createElement('div');
+      row.className = 'total-row';
+      row.innerHTML = `<span>${currencyNames[c]} (${c})</span><strong>${fmtCurrency(byCurrency[c], c)}</strong>`;
+      totals.appendChild(row);
+    }
+
+    if (!folder.items.length) {
+      totals.innerHTML = '<div class="rate-status">Žiadne výdavky.</div>';
+    }
+
+    let totalEur = 0;
+    let missing = false;
+    for (const item of folder.items) {
+      const eur = toEur(Number(item.amount), item.currency);
+      if (eur == null) missing = true;
+      else totalEur += eur;
+    }
+    $('grandTotal').textContent = fmtCurrency(totalEur, 'EUR') + (missing ? ' *' : '');
+  }
+
+  function addFolder(name) {
+    const folder = { id: uid(), name: name.trim(), createdAt: Date.now(), items: [] };
+    state.folders.push(folder);
+    saveState();
+    renderFolders();
+    openFolder(folder.id);
+  }
+
+  function deleteCurrentFolder() {
+    const folder = currentFolder();
+    if (!folder) return;
+    if (!confirm(`Naozaj zmazať folder "${folder.name}" aj so všetkými položkami?`)) return;
+    state.folders = state.folders.filter(f => f.id !== folder.id);
+    saveState();
+    closeFolder();
+  }
+
+  function addItem(name, amount, currency) {
+    const folder = currentFolder();
+    if (!folder) return;
+    folder.items.push({
+      id: uid(),
+      name: name.trim(),
+      amount: Number(amount),
+      currency,
+      createdAt: Date.now()
+    });
+    saveState();
+    renderFolder();
+  }
+
+  function removeItem(id) {
+    const folder = currentFolder();
+    if (!folder) return;
+    folder.items = folder.items.filter(i => i.id !== id);
+    saveState();
+    renderFolder();
+  }
+
+  function saveRates(data) {
+    localStorage.setItem(RATE_KEY, JSON.stringify(data));
+  }
+
+  function loadCachedRates() {
+    try {
+      const cached = JSON.parse(localStorage.getItem(RATE_KEY));
+      if (cached?.rates) {
+        rates = cached.rates;
+        rateDate = cached.date || '';
+        return true;
+      }
+    } catch {}
+    return false;
+  }
+
+  async function fetchRates(showLoading=true) {
+    if (showLoading) {
+      $('rateStatus').textContent = 'Načítavam aktuálny kurz…';
+      $('rateStatus').className = 'rate-status';
+    }
+
+    try {
+      const url = 'https://api.frankfurter.dev/v2/rates?base=EUR&quotes=CZK,PLN,GBP,USD';
+      const res = await fetch(url, { cache:'no-store' });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      const data = await res.json();
+
+      const newRates = { EUR: 1 };
+      let newestDate = '';
+
+      if (Array.isArray(data)) {
+        for (const row of data) {
+          if (row.base === 'EUR' && CURRENCIES.includes(row.quote)) {
+            newRates[row.quote] = Number(row.rate);
+            if (!newestDate || row.date > newestDate) newestDate = row.date;
+          }
+        }
+      } else if (data && data.rates) {
+        Object.assign(newRates, data.rates);
+        newestDate = data.date || '';
+      }
+
+      const needed = ['CZK','PLN','GBP','USD'];
+      if (!needed.every(c => Number.isFinite(newRates[c]) && newRates[c] > 0)) {
+        throw new Error('Neúplné kurzy');
+      }
+
+      rates = newRates;
+      rateDate = newestDate;
+      saveRates({ rates, date: rateDate, fetchedAt: Date.now() });
+      updateRateUi(true);
+      renderFolders();
+      if (selectedFolderId) renderFolder();
+    } catch (e) {
+      const hadCache = loadCachedRates();
+      updateRateUi(false, hadCache);
+      renderFolders();
+      if (selectedFolderId) renderFolder();
+    }
+  }
+
+  function updateRateUi(ok, cached=false) {
+    if (ok) {
+      $('rateStatus').textContent = 'Kurz načítaný online';
+      $('rateStatus').className = 'rate-status ok';
+    } else if (cached) {
+      $('rateStatus').textContent = 'Offline – používam posledný uložený kurz';
+      $('rateStatus').className = 'rate-status';
+    } else {
+      $('rateStatus').textContent = 'Kurz sa nepodarilo načítať';
+      $('rateStatus').className = 'rate-status bad';
+    }
+
+    $('rateDate').textContent = rateDate ? 'Kurz k dátumu: ' + new Date(rateDate + 'T00:00:00').toLocaleDateString('sk-SK') : '';
+  }
+
+  $('newFolderBtn').addEventListener('click', () => {
+    $('folderName').value = '';
+    $('folderDialog').showModal();
+    setTimeout(() => $('folderName').focus(), 50);
+  });
+
+  $('cancelFolderBtn').addEventListener('click', () => $('folderDialog').close());
+
+  $('folderForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const name = $('folderName').value.trim();
+    if (!name) return;
+    $('folderDialog').close();
+    addFolder(name);
+  });
+
+  $('itemForm').addEventListener('submit', e => {
+    e.preventDefault();
+    const name = $('itemName').value.trim();
+    const amount = Number(String($('itemAmount').value).replace(',', '.'));
+    const currency = $('itemCurrency').value;
+    if (!name || !Number.isFinite(amount) || amount < 0) return;
+    addItem(name, amount, currency);
+    $('itemName').value = '';
+    $('itemAmount').value = '';
+    $('itemName').focus();
+  });
+
+  $('backBtn').addEventListener('click', closeFolder);
+  $('deleteFolderBtn').addEventListener('click', deleteCurrentFolder);
+  $('refreshRatesBtn').addEventListener('click', () => fetchRates(true));
+
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => navigator.serviceWorker.register('./service-worker.js'));
+  }
+
+  loadCachedRates();
+  renderFolders();
+  updateRateUi(false, !!localStorage.getItem(RATE_KEY));
+
+  const hashMatch = location.hash.match(/^#folder=(.+)$/);
+  if (hashMatch) {
+    const id = decodeURIComponent(hashMatch[1]);
+    if (state.folders.some(f => f.id === id)) openFolder(id);
+  }
+
+  fetchRates(false);
+})();
+</script>
+</body>
+</html>

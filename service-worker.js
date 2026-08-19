@@ -1,8 +1,9 @@
-const CACHE = 'moje-nakupy-static-v4';
+const CACHE = 'moje-nakupy-static-v5';
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
+  './config.js',
   './icon-192.png',
   './icon-512.png'
 ];
@@ -21,6 +22,20 @@ self.addEventListener('activate', event => {
 
 self.addEventListener('fetch', event => {
   const url = new URL(event.request.url);
+
+
+  if (url.pathname.endsWith('/config.js')) {
+    event.respondWith(
+      fetch(event.request)
+        .then(response => {
+          const copy = response.clone();
+          caches.open(CACHE).then(cache => cache.put(event.request, copy));
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+    return;
+  }
 
   // Menové API nechávame vždy na sieť; fallback rieši localStorage v aplikácii.
   if (url.hostname === 'api.frankfurter.dev') return;

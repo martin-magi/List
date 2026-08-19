@@ -1,7 +1,7 @@
 {
   "name": "Moje nákupy",
   "short_name": "Nákupy",
-  "description": "Jednoduché evidovanie nákupov vo folderoch s prepočtom mien na EUR.",
+  "description": "Evidovanie nákupov vo folderoch, prepočet mien a voliteľná synchronizácia s Google Drive.",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

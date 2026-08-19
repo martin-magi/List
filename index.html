@@ -74,6 +74,12 @@
     .hidden{display:none!important}
     .pill{display:inline-block;font-size:11px;border-radius:999px;padding:4px 8px;background:#0d1527;color:var(--muted);border:1px solid var(--line)}
     .footer-note{font-size:12px;color:var(--muted);margin:16px 4px 4px;line-height:1.45}
+    .cloud-card{margin-bottom:14px}
+    .cloud-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+    .cloud-title{font-weight:850}
+    .cloud-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}
+    .setup-row{display:grid;grid-template-columns:1fr auto;gap:8px;margin-top:12px}
+    .sync-note{font-size:12px;color:var(--muted);margin-top:10px;line-height:1.4}
     @media(max-width:640px){
       .app{padding:14px}
       .title{font-size:24px}
@@ -100,10 +106,42 @@
         </div>
       </div>
 
+      <div class="card cloud-card">
+        <div class="cloud-head">
+          <div>
+            <div class="cloud-title">Google Drive</div>
+            <div id="googleDriveStatus" class="rate-status">Nie je pripojený</div>
+          </div>
+          <button id="googleConnectBtn" class="btn primary" type="button">Pripojiť Google Drive</button>
+        </div>
+
+        <div id="googleClientSetup" class="hidden">
+          <div class="sync-note">
+            Pre prvé spustenie vlož OAuth Client ID typu <strong>Web application</strong>. Uloží sa iba v tomto zariadení.
+          </div>
+          <div class="setup-row">
+            <input id="googleClientIdInput" type="text" autocomplete="off"
+                   placeholder="1234567890-abc...apps.googleusercontent.com">
+            <button id="saveGoogleClientIdBtn" class="btn" type="button">Uložiť Client ID</button>
+          </div>
+        </div>
+
+        <div id="googleDriveControls" class="hidden">
+          <div class="cloud-actions">
+            <button id="loadDriveBtn" class="btn" type="button">Načítať z Disku</button>
+            <button id="saveDriveBtn" class="btn" type="button">Uložiť na Disk</button>
+            <button id="disconnectDriveBtn" class="btn danger" type="button">Odpojiť</button>
+          </div>
+          <div id="googleSyncInfo" class="sync-note">
+            Po prvom manuálnom načítaní alebo uložení sa ďalšie zmeny počas aktuálneho pripojenia ukladajú automaticky.
+          </div>
+        </div>
+      </div>
+
       <div id="foldersList" class="grid"></div>
 
       <div class="footer-note">
-        Dáta sa ukladajú iba do tohto zariadenia cez localStorage. Kurz sa načítava z internetu a posledný úspešný kurz sa uchová aj pre offline použitie.
+        Dáta sa vždy ukladajú lokálne cez localStorage. Voliteľne ich môžeš synchronizovať do súboru data.json v priečinku „Moje nakupy“ na Google Drive.
       </div>
     </section>
 
@@ -182,10 +220,16 @@
     </form>
   </dialog>
 
+<script src="./config.js"></script>
+<script src="https://accounts.google.com/gsi/client"></script>
 <script>
 (() => {
   const STORAGE_KEY = 'moje-nakupy-v3';
   const RATE_KEY = 'moje-nakupy-rates-v2';
+  const GOOGLE_CLIENT_ID_KEY = 'moje-nakupy-google-client-id';
+  const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file';
+  const DRIVE_FOLDER_NAME = 'Moje nakupy';
+  const DRIVE_DATA_FILE_NAME = 'data.json';
   const CURRENCIES = ['EUR','CZK','PLN','GBP','USD'];
   const currencyNames = {
     EUR:'Euro', CZK:'Česká koruna', PLN:'Poľský zlotý', GBP:'Libra', USD:'Dolár'
@@ -195,6 +239,16 @@
   let rates = { EUR: 1 };
   let rateDate = '';
   let selectedFolderId = null;
+
+  let googleTokenClient = null;
+  let googleAccessToken = '';
+  let googleTokenExpiresAt = 0;
+  let driveFolderId = null;
+  let driveFileId = null;
+  let cloudSyncReady = false;
+  let cloudSaveTimer = null;
+  let cloudBusy = false;
+  let cloudSavePending = false;
 
   const $ = id => document.getElementById(id);
 
@@ -206,8 +260,11 @@
     return { folders: [] };
   }
 
-  function saveState() {
+  function saveState(syncCloud=true) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+    if (syncCloud && cloudSyncReady && hasValidGoogleToken()) {
+      scheduleCloudSave();
+    }
   }
 
   function uid() {
@@ -565,6 +622,391 @@
     }
   }
 
+  function getConfiguredGoogleClientId() {
+    const embedded = String(window.APP_CONFIG?.GOOGLE_CLIENT_ID || '').trim();
+    if (embedded && !embedded.includes('YOUR_GOOGLE_CLIENT_ID')) return embedded;
+    return String(localStorage.getItem(GOOGLE_CLIENT_ID_KEY) || '').trim();
+  }
+
+  function hasValidGoogleToken() {
+    return !!googleAccessToken && Date.now() < googleTokenExpiresAt - 15000;
+  }
+
+  function setGoogleStatus(text, kind='') {
+    $('googleDriveStatus').textContent = text;
+    $('googleDriveStatus').className = 'rate-status' + (kind ? ' ' + kind : '');
+  }
+
+  function setSyncInfo(text) {
+    $('googleSyncInfo').textContent = text;
+  }
+
+  function renderGoogleUi() {
+    const clientId = getConfiguredGoogleClientId();
+    const connected = hasValidGoogleToken();
+
+    $('googleClientSetup').classList.toggle('hidden', !!clientId);
+    $('googleConnectBtn').classList.toggle('hidden', !clientId || connected);
+    $('googleDriveControls').classList.toggle('hidden', !connected);
+
+    if (!clientId) {
+      setGoogleStatus('Najprv nastav Google OAuth Client ID.');
+    } else if (!connected) {
+      setGoogleStatus('Pripravené na pripojenie.');
+    }
+  }
+
+  function saveGoogleClientId() {
+    const value = $('googleClientIdInput').value.trim();
+    if (!value.endsWith('.apps.googleusercontent.com')) {
+      alert('Client ID nevyzerá správne. Má končiť na .apps.googleusercontent.com');
+      return;
+    }
+    localStorage.setItem(GOOGLE_CLIENT_ID_KEY, value);
+    googleTokenClient = null;
+    $('googleClientIdInput').value = '';
+    renderGoogleUi();
+  }
+
+  function initGoogleTokenClient() {
+    const clientId = getConfiguredGoogleClientId();
+    if (!clientId) return null;
+    if (!window.google?.accounts?.oauth2) {
+      setGoogleStatus('Google prihlasovacia knižnica sa ešte nenačítala.');
+      return null;
+    }
+
+    googleTokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: clientId,
+      scope: DRIVE_SCOPE,
+      callback: async (response) => {
+        if (response.error) {
+          setGoogleStatus('Pripojenie zlyhalo: ' + response.error, 'bad');
+          return;
+        }
+
+        googleAccessToken = response.access_token;
+        googleTokenExpiresAt = Date.now() + (Number(response.expires_in || 3600) * 1000);
+        cloudSyncReady = false;
+        driveFolderId = null;
+        driveFileId = null;
+
+        setGoogleStatus('Google Drive pripojený.', 'ok');
+        renderGoogleUi();
+
+        try {
+          await discoverDriveData();
+        } catch (e) {
+          setGoogleStatus('Drive je pripojený, ale nepodarilo sa skontrolovať dáta.', 'bad');
+          setSyncInfo(e.message || String(e));
+        }
+      }
+    });
+    return googleTokenClient;
+  }
+
+  function connectGoogleDrive() {
+    const client = googleTokenClient || initGoogleTokenClient();
+    if (!client) return;
+    client.requestAccessToken({ prompt: '' });
+  }
+
+  async function disconnectGoogleDrive() {
+    cloudSyncReady = false;
+    driveFolderId = null;
+    driveFileId = null;
+
+    const token = googleAccessToken;
+    googleAccessToken = '';
+    googleTokenExpiresAt = 0;
+
+    if (token && window.google?.accounts?.oauth2) {
+      try {
+        await new Promise(resolve => google.accounts.oauth2.revoke(token, resolve));
+      } catch {}
+    }
+
+    setGoogleStatus('Odpojené.');
+    setSyncInfo('Lokálne dáta zostali v zariadení.');
+    renderGoogleUi();
+  }
+
+  function markGoogleSessionExpired() {
+    googleAccessToken = '';
+    googleTokenExpiresAt = 0;
+    cloudSyncReady = false;
+    setGoogleStatus('Google relácia vypršala. Pripoj Drive znova.', 'bad');
+    renderGoogleUi();
+  }
+
+  async function driveFetch(url, options={}) {
+    if (!hasValidGoogleToken()) {
+      markGoogleSessionExpired();
+      throw new Error('Google relácia nie je aktívna.');
+    }
+
+    const headers = new Headers(options.headers || {});
+    headers.set('Authorization', 'Bearer ' + googleAccessToken);
+
+    const response = await fetch(url, { ...options, headers });
+
+    if (response.status === 401) {
+      markGoogleSessionExpired();
+      throw new Error('Google relácia vypršala.');
+    }
+
+    if (!response.ok) {
+      let detail = '';
+      try {
+        const err = await response.json();
+        detail = err?.error?.message || '';
+      } catch {}
+      throw new Error(detail || `Google Drive API: HTTP ${response.status}`);
+    }
+
+    return response;
+  }
+
+  async function listDriveFiles(query) {
+    const params = new URLSearchParams({
+      q: query,
+      spaces: 'drive',
+      fields: 'files(id,name,mimeType,modifiedTime,parents)',
+      pageSize: '100'
+    });
+    const res = await driveFetch('https://www.googleapis.com/drive/v3/files?' + params.toString());
+    return (await res.json()).files || [];
+  }
+
+  async function findDriveFolder() {
+    if (driveFolderId) return driveFolderId;
+
+    const files = await listDriveFiles(
+      `name='${DRIVE_FOLDER_NAME}' and mimeType='application/vnd.google-apps.folder' and trashed=false`
+    );
+
+    if (files.length) {
+      driveFolderId = files[0].id;
+      return driveFolderId;
+    }
+    return null;
+  }
+
+  async function createDriveFolder() {
+    const res = await driveFetch(
+      'https://www.googleapis.com/drive/v3/files?fields=id,name',
+      {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          name: DRIVE_FOLDER_NAME,
+          mimeType: 'application/vnd.google-apps.folder'
+        })
+      }
+    );
+    const data = await res.json();
+    driveFolderId = data.id;
+    return driveFolderId;
+  }
+
+  async function ensureDriveFolder() {
+    return await findDriveFolder() || await createDriveFolder();
+  }
+
+  async function findDriveDataFile() {
+    const folderId = await findDriveFolder();
+    if (!folderId) return null;
+
+    const files = await listDriveFiles(
+      `name='${DRIVE_DATA_FILE_NAME}' and '${folderId}' in parents and trashed=false`
+    );
+
+    driveFileId = files.length ? files[0].id : null;
+    return driveFileId;
+  }
+
+  async function discoverDriveData() {
+    setSyncInfo('Kontrolujem uložené dáta na Google Drive…');
+    const folderId = await findDriveFolder();
+
+    if (!folderId) {
+      setSyncInfo('Na Disku zatiaľ nie je priečinok „Moje nakupy“. Vytvorí sa pri prvom uložení.');
+      return;
+    }
+
+    const fileId = await findDriveDataFile();
+    if (!fileId) {
+      setSyncInfo('Priečinok existuje, ale data.json zatiaľ nie. Klikni „Uložiť na Disk“.');
+      return;
+    }
+
+    setSyncInfo('Na Google Drive sa našiel data.json. Vyber „Načítať z Disku“ alebo „Uložiť na Disk“.');
+  }
+
+  function cloudPayload() {
+    return {
+      app: 'moje-nakupy',
+      formatVersion: 2,
+      updatedAt: new Date().toISOString(),
+      state
+    };
+  }
+
+  async function createDriveDataFile(content) {
+    const folderId = await ensureDriveFolder();
+
+    const metaRes = await driveFetch(
+      'https://www.googleapis.com/drive/v3/files?fields=id,name',
+      {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body: JSON.stringify({
+          name: DRIVE_DATA_FILE_NAME,
+          mimeType: 'application/json',
+          parents: [folderId]
+        })
+      }
+    );
+
+    const meta = await metaRes.json();
+    driveFileId = meta.id;
+
+    await driveFetch(
+      `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(driveFileId)}?uploadType=media`,
+      {
+        method: 'PATCH',
+        headers: { 'Content-Type':'application/json;charset=utf-8' },
+        body: content
+      }
+    );
+  }
+
+  async function saveAllToDrive({silent=false}={}) {
+    if (cloudBusy) {
+      cloudSavePending = true;
+      return;
+    }
+    if (!hasValidGoogleToken()) {
+      if (!silent) alert('Najprv pripoj Google Drive.');
+      return;
+    }
+
+    cloudBusy = true;
+    if (!silent) setSyncInfo('Ukladám dáta na Google Drive…');
+
+    try {
+      const content = JSON.stringify(cloudPayload(), null, 2);
+      const fileId = driveFileId || await findDriveDataFile();
+
+      if (fileId) {
+        await driveFetch(
+          `https://www.googleapis.com/upload/drive/v3/files/${encodeURIComponent(fileId)}?uploadType=media`,
+          {
+            method: 'PATCH',
+            headers: { 'Content-Type':'application/json;charset=utf-8' },
+            body: content
+          }
+        );
+      } else {
+        await createDriveDataFile(content);
+      }
+
+      cloudSyncReady = true;
+      const when = new Date().toLocaleString('sk-SK');
+      setGoogleStatus('Google Drive pripojený.', 'ok');
+      setSyncInfo('Synchronizované: ' + when);
+    } catch (e) {
+      cloudSyncReady = false;
+      setSyncInfo('Uloženie zlyhalo: ' + (e.message || String(e)));
+      if (!silent) alert('Uloženie na Google Drive zlyhalo: ' + (e.message || e));
+    } finally {
+      cloudBusy = false;
+      if (cloudSavePending && cloudSyncReady && hasValidGoogleToken()) {
+        cloudSavePending = false;
+        scheduleCloudSave();
+      }
+    }
+  }
+
+  function normalizeCloudState(payload) {
+    const candidate = payload?.state || payload;
+
+    if (!candidate || !Array.isArray(candidate.folders)) {
+      throw new Error('data.json nemá očakávaný formát.');
+    }
+
+    return {
+      folders: candidate.folders.map(folder => ({
+        id: String(folder.id || uid()),
+        name: String(folder.name || 'Bez názvu'),
+        createdAt: Number(folder.createdAt) || Date.now(),
+        items: Array.isArray(folder.items) ? folder.items.map(item => ({
+          id: String(item.id || uid()),
+          name: String(item.name || ''),
+          amount: Number(item.amount) || 0,
+          currency: CURRENCIES.includes(String(item.currency || '').toUpperCase())
+            ? String(item.currency).toUpperCase()
+            : 'EUR',
+          createdAt: Number(item.createdAt) || Date.now()
+        })) : []
+      }))
+    };
+  }
+
+  async function loadAllFromDrive() {
+    if (!hasValidGoogleToken()) {
+      alert('Najprv pripoj Google Drive.');
+      return;
+    }
+
+    try {
+      const fileId = driveFileId || await findDriveDataFile();
+      if (!fileId) {
+        alert('Na Google Drive zatiaľ nie je data.json. Najprv môžeš lokálne dáta uložiť na Disk.');
+        return;
+      }
+
+      if (state.folders.length) {
+        const ok = confirm(
+          'Načítanie z Google Drive nahradí lokálne foldery v tomto zariadení. Pokračovať?'
+        );
+        if (!ok) return;
+      }
+
+      setSyncInfo('Načítavam dáta z Google Drive…');
+
+      const res = await driveFetch(
+        `https://www.googleapis.com/drive/v3/files/${encodeURIComponent(fileId)}?alt=media`
+      );
+      const payload = await res.json();
+
+      state = normalizeCloudState(payload);
+      saveState(false);
+      selectedFolderId = null;
+      cloudSyncReady = true;
+
+      $('folderView').classList.add('hidden');
+      $('foldersView').classList.remove('hidden');
+      renderFolders();
+
+      setGoogleStatus('Google Drive pripojený.', 'ok');
+      setSyncInfo('Dáta načítané: ' + new Date().toLocaleString('sk-SK'));
+    } catch (e) {
+      cloudSyncReady = false;
+      setSyncInfo('Načítanie zlyhalo: ' + (e.message || String(e)));
+      alert('Načítanie z Google Drive zlyhalo: ' + (e.message || e));
+    }
+  }
+
+  function scheduleCloudSave() {
+    clearTimeout(cloudSaveTimer);
+    cloudSaveTimer = setTimeout(() => {
+      if (cloudSyncReady && hasValidGoogleToken()) {
+        saveAllToDrive({silent:true});
+      }
+    }, 800);
+  }
+
   function updateRateUi(ok, cached=false) {
     if (ok) {
       $('rateStatus').textContent = 'Kurz načítaný online';
@@ -579,6 +1021,15 @@
 
     $('rateDate').textContent = rateDate ? 'Kurz k dátumu: ' + new Date(rateDate + 'T00:00:00').toLocaleDateString('sk-SK') : '';
   }
+
+  $('saveGoogleClientIdBtn').addEventListener('click', saveGoogleClientId);
+  $('googleClientIdInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') saveGoogleClientId();
+  });
+  $('googleConnectBtn').addEventListener('click', connectGoogleDrive);
+  $('loadDriveBtn').addEventListener('click', loadAllFromDrive);
+  $('saveDriveBtn').addEventListener('click', () => saveAllToDrive({silent:false}));
+  $('disconnectDriveBtn').addEventListener('click', disconnectGoogleDrive);
 
   $('importFolderBtn').addEventListener('click', () => {
     $('importFolderInput').click();
@@ -629,6 +1080,7 @@
   loadCachedRates();
   renderFolders();
   updateRateUi(false, !!localStorage.getItem(RATE_KEY));
+  renderGoogleUi();
 
   const hashMatch = location.hash.match(/^#folder=(.+)$/);
   if (hashMatch) {
